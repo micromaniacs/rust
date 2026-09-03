@@ -20,7 +20,7 @@ RUN apt-get update \
       libc6-dev \
       protobuf-compiler \
  && rm -rf /var/lib/apt/lists/* \
- && curl -fsSL --retry 3 -o /tmp/rustup-init.sh https://sh.rust-lang.org/rustup-init.sh \
+ && curl -fsSL --retry 3 -o /tmp/rustup-init.sh https://static.rust-lang.org/rustup/rustup-init.sh \
  && sh /tmp/rustup-init.sh -y --no-modify-path --profile minimal --default-toolchain "${RUST_VERSION}" --component rustfmt --component clippy \
  && rm -f /tmp/rustup-init.sh
 
