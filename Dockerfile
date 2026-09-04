@@ -18,6 +18,9 @@ RUN apt-get update \
       gcc \
       git \
       libc6-dev \
+      libssl-dev \
+      make \
+      pkg-config \
       protobuf-compiler \
  && rm -rf /var/lib/apt/lists/* \
  && curl -fsSL --retry 3 -o /tmp/rustup-init.sh https://static.rust-lang.org/rustup/rustup-init.sh \
