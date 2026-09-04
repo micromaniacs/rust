@@ -7,6 +7,8 @@ Bundled tools:
 - rust (stable, pinned, with rustfmt and clippy)
 - cargo
 - protobuf-compiler (protoc)
+- pkg-config + libssl-dev (OpenSSL headers for building crates like `openssl`)
+- make
 - node (npm, npx included)
 - prettier
 - git
