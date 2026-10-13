@@ -5,6 +5,10 @@ on:
     - cron: "0 3 * * *" # daily 03:00 UTC
   workflow_dispatch:
 
+concurrency:
+  group: docker-build
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -15,12 +19,34 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Resolve image tags
+      - name: Discover latest toolchain versions
         run: |
-          RUST_VERSION="$(sed -n 's/^ARG RUST_VERSION=//p' Dockerfile)"
-          echo "RUST_MAJOR=${RUST_VERSION%%.*}" >> "$GITHUB_ENV"
-          echo "RUST_MINOR=${RUST_VERSION%.*}" >> "$GITHUB_ENV"
-          echo "RUST_FULL=${RUST_VERSION}" >> "$GITHUB_ENV"
+          RUST_FULL="$(curl -fsSL \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'Authorization: Bearer ${{ github.token }}' \
+            'https://api.github.com/repos/rust-lang/rust/releases/latest' \
+            | jq -r '.tag_name | select(. != null and . != "null")')"
+          RUSTUP_VERSION="$(curl -fsSL 'https://static.rust-lang.org/rustup/release-stable.toml' \
+            | sed -n "s/^version = '\(.*\)'$/\1/p")"
+          NODE_VERSION="$(curl -fsSL 'https://nodejs.org/dist/index.json' \
+            | jq -r '[.[].version | ltrimstr("v") | select(test("-") | not)] | max_by(split(".") | map(tonumber)) | select(. != null and . != "null")')"
+          PRETTIER_VERSION="$(curl -fsSL 'https://registry.npmjs.org/prettier/latest' | jq -r '.version | select(. != null and . != "null")')"
+          PROTOC_VERSION="$(curl -fsSL \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'Authorization: Bearer ${{ github.token }}' \
+            'https://api.github.com/repos/protocolbuffers/protobuf/releases/latest' \
+            | jq -r '.tag_name | ltrimstr("v") | select(. != null and . != "null")')"
+          if [ -z "${RUST_FULL}" ] || [ -z "${RUSTUP_VERSION}" ] || [ -z "${NODE_VERSION}" ] || [ -z "${PRETTIER_VERSION}" ] || [ -z "${PROTOC_VERSION}" ]; then
+            echo "Failed to discover toolchain versions" >&2
+            exit 1
+          fi
+          echo "RUST_MAJOR=${RUST_FULL%%.*}" >> "$GITHUB_ENV"
+          echo "RUST_MINOR=${RUST_FULL%.*}" >> "$GITHUB_ENV"
+          echo "RUST_FULL=${RUST_FULL}" >> "$GITHUB_ENV"
+          echo "RUSTUP_VERSION=${RUSTUP_VERSION}" >> "$GITHUB_ENV"
+          echo "NODE_VERSION=${NODE_VERSION}" >> "$GITHUB_ENV"
+          echo "PRETTIER_VERSION=${PRETTIER_VERSION}" >> "$GITHUB_ENV"
+          echo "PROTOC_VERSION=${PROTOC_VERSION}" >> "$GITHUB_ENV"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -38,17 +64,35 @@ jobs:
       - name: Lowercase repository name
         run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
 
+      - name: Check if this toolchain combination is already published
+        id: published
+        run: |
+          if docker buildx imagetools inspect "${IMAGE}:${RUST_FULL}-rustup${RUSTUP_VERSION}-node${NODE_VERSION}-prettier${PRETTIER_VERSION}-protoc${PROTOC_VERSION}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build and push
+        if: steps.published.outputs.exists == 'false'
         uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          provenance: false
+          build-args: |
+            RUST_VERSION=${{ env.RUST_FULL }}
+            RUSTUP_VERSION=${{ env.RUSTUP_VERSION }}
+            NODE_VERSION=${{ env.NODE_VERSION }}
+            PRETTIER_VERSION=${{ env.PRETTIER_VERSION }}
+            PROTOC_VERSION=${{ env.PROTOC_VERSION }}
           tags: |
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:${{ env.RUST_MAJOR }}
             ${{ env.IMAGE }}:${{ env.RUST_MINOR }}
             ${{ env.IMAGE }}:${{ env.RUST_FULL }}
+            ${{ env.IMAGE }}:${{ env.RUST_FULL }}-rustup${{ env.RUSTUP_VERSION }}-node${{ env.NODE_VERSION }}-prettier${{ env.PRETTIER_VERSION }}-protoc${{ env.PROTOC_VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -57,3 +101,5 @@ jobs:
 
       - name: Clean up untagged image versions
         uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          delete-untagged: true
