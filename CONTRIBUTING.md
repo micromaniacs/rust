@@ -21,8 +21,8 @@
 - Build and test locally before pushing:
 
   ```sh
-  docker build -t ghcr.io/alexeyco/rust:local .
-  docker run --rm ghcr.io/alexeyco/rust:local sh -c 'rustc --version && cargo --version && rustfmt --version && cargo clippy --version && protoc --version && node --version && npm --version && npx --version && prettier --version && git --version'
+  docker build -t ghcr.io/micromaniacs/rust:local .
+  docker run --rm ghcr.io/micromaniacs/rust:local sh -c 'rustc --version && cargo --version && rustfmt --version && cargo clippy --version && protoc --version && node --version && npm --version && npx --version && prettier --version && git --version'
   ```
 
 - CI rebuilds and pushes the image to GHCR daily at 03:00 UTC (also manually
